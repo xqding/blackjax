@@ -44,6 +44,7 @@ class IntegratorState(NamedTuple):
     """
 
     position: ArrayTree
+    parameter: ArrayTree
     momentum: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
@@ -98,7 +99,7 @@ def generalized_two_stage_integrator(
     """
 
     def one_step(state: IntegratorState, step_size: float):
-        position, momentum, _, logdensity_grad = state
+        position, parameter, momentum, _, logdensity_grad = state
         # auxiliary infomation generated during integration for diagnostics. It is
         # updated by the operator1 and operator2 at each call.
         momentum_update_info = None
@@ -121,6 +122,7 @@ def generalized_two_stage_integrator(
                     position_update_info,
                 ) = operator2(
                     position,
+                    parameter,
                     kinetic_grad,
                     step_size,
                     coef,
@@ -137,6 +139,7 @@ def generalized_two_stage_integrator(
         )
         return format_output_fn(
             position,
+            parameter,
             momentum,
             logdensity,
             logdensity_grad,
@@ -158,6 +161,7 @@ def euclidean_position_update_fn(logdensity_fn: Callable):
 
     def update(
         position: ArrayTree,
+        parameter: ArrayTree,
         kinetic_grad: ArrayTree,
         step_size: float,
         coef: float,
@@ -169,7 +173,7 @@ def euclidean_position_update_fn(logdensity_fn: Callable):
             position,
             kinetic_grad,
         )
-        logdensity, logdensity_grad = logdensity_and_grad_fn(new_position)
+        logdensity, logdensity_grad = logdensity_and_grad_fn(new_position, parameter)
         return new_position, logdensity, logdensity_grad, None
 
     return update
@@ -202,6 +206,7 @@ def euclidean_momentum_update_fn(kinetic_energy_fn: KineticEnergy):
 
 def format_euclidean_state_output(
     position,
+    parameter,
     momentum,
     logdensity,
     logdensity_grad,
@@ -210,7 +215,7 @@ def format_euclidean_state_output(
     momentum_update_info,
 ):
     del kinetic_grad, position_update_info, momentum_update_info
-    return IntegratorState(position, momentum, logdensity, logdensity_grad)
+    return IntegratorState(position, parameter, momentum, logdensity, logdensity_grad)
 
 
 def generate_euclidean_integrator(coefficients):

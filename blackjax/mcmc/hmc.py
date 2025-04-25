@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Public API for the HMC Kernel"""
+
 from typing import Callable, NamedTuple, Union
 
 import jax
@@ -43,6 +44,7 @@ class HMCState(NamedTuple):
     """
 
     position: ArrayTree
+    parameter: ArrayTree
     logdensity: float
     logdensity_grad: ArrayTree
 
@@ -85,9 +87,9 @@ class HMCInfo(NamedTuple):
     num_integration_steps: int
 
 
-def init(position: ArrayLikeTree, logdensity_fn: Callable):
-    logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position)
-    return HMCState(position, logdensity, logdensity_grad)
+def init(position: ArrayLikeTree, parameter: ArrayLikeTree, logdensity_fn: Callable):
+    logdensity, logdensity_grad = jax.value_and_grad(logdensity_fn)(position, parameter)
+    return HMCState(position, parameter, logdensity, logdensity_grad)
 
 
 def build_kernel(
@@ -134,15 +136,15 @@ def build_kernel(
 
         key_momentum, key_integrator = jax.random.split(rng_key, 2)
 
-        position, logdensity, logdensity_grad = state
+        position, parameter, logdensity, logdensity_grad = state
         momentum = metric.sample_momentum(key_momentum, position)
 
         integrator_state = integrators.IntegratorState(
-            position, momentum, logdensity, logdensity_grad
+            position, parameter, momentum, logdensity, logdensity_grad
         )
         proposal, info, _ = proposal_generator(key_integrator, integrator_state)
         proposal = HMCState(
-            proposal.position, proposal.logdensity, proposal.logdensity_grad
+            proposal.position, proposal.parameter, proposal.logdensity, proposal.logdensity_grad
         )
 
         return proposal, info
@@ -235,9 +237,9 @@ def as_top_level_api(
 
     kernel = build_kernel(integrator, divergence_threshold)
 
-    def init_fn(position: ArrayLikeTree, rng_key=None):
+    def init_fn(position: ArrayLikeTree, parameter: ArrayLikeTree, rng_key=None):
         del rng_key
-        return init(position, logdensity_fn)
+        return init(position, parameter, logdensity_fn)
 
     def step_fn(rng_key: PRNGKey, state):
         return kernel(
@@ -332,6 +334,7 @@ def flip_momentum(
     flipped_momentum = jax.tree_util.tree_map(lambda m: -1.0 * m, state.momentum)
     return integrators.IntegratorState(
         state.position,
+        state.parameter,
         flipped_momentum,
         state.logdensity,
         state.logdensity_grad,
