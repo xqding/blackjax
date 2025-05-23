@@ -238,6 +238,46 @@ class LinearRegressionTest(chex.TestCase):
         np.testing.assert_allclose(np.mean(scale_samples), 1.0, atol=1e-1)
         np.testing.assert_allclose(np.mean(coefs_samples), 3.0, atol=1e-1)
 
+    def test_langevin(self):
+        """Test the Langevin kernel."""
+        init_key0, init_key1, inference_key = jax.random.split(self.key, 3)
+        x_data = jax.random.normal(init_key0, shape=(1000, 1))
+        y_data = 3 * x_data + jax.random.normal(init_key1, shape=x_data.shape)
+
+        logposterior_fn_ = functools.partial(
+            self.regression_logprob, x=x_data, preds=y_data
+        )
+        logposterior_fn = lambda x: logposterior_fn_(**x)
+
+        langevin = blackjax.langevin(
+            jax.value_and_grad(logposterior_fn),
+            step_size=0.001,
+            save_freq=100,
+            kbT=1.0,
+            friction_coefficient=1,
+            inverse_mass_matrix=jnp.array([1.0, 1.0]),
+        )
+
+        key, subkey = jax.random.split(self.key)
+        state = langevin.init(
+            {"coefs": jnp.array(1.0), "log_scale": jnp.array(1.0)}, subkey
+        )
+
+        _, states = run_inference_algorithm(
+            rng_key=inference_key,
+            initial_state=state,
+            inference_algorithm=langevin,
+            transform=lambda state, info: state.position,
+            num_steps=10_000,
+        )
+
+        coefs_samples = states["coefs"][3000:]
+        scale_samples = np.exp(states["log_scale"][3000:])
+
+        np.testing.assert_allclose(np.mean(scale_samples), 1.0, atol=1e-1)
+        np.testing.assert_allclose(np.mean(coefs_samples), 3.0, atol=1e-1)
+
+
     def test_mclmc(self):
         """Test the MCLMC kernel."""
         init_key0, init_key1, inference_key = jax.random.split(self.key, 3)
@@ -744,8 +784,27 @@ class UnivariateNormalTest(chex.TestCase):
             samples = postprocess_samples(states, orbit_key)
         else:
             samples = states.position[burnin:]
+
         np.testing.assert_allclose(np.mean(samples), 1.0, rtol=1e-1)
         np.testing.assert_allclose(np.var(samples), 4.0, rtol=1e-1)
+
+    @chex.all_variants(with_pmap=False)
+    def test_langevin(self):
+        inference_algorithm = blackjax.langevin(
+            jax.value_and_grad(self.normal_logprob),
+            step_size=0.01,
+            save_freq=100,
+            kbT=1.0,
+            friction_coefficient=1,
+            inverse_mass_matrix=jnp.array([1.0]),
+        )
+
+        key, subkey = jax.random.split(self.key)
+        initial_state = inference_algorithm.init(jnp.array(1.0), subkey)
+
+        self.univariate_normal_test_case(
+            inference_algorithm, key, initial_state, 5000, 1000
+        )
 
     @chex.all_variants(with_pmap=False)
     def test_irmh(self):

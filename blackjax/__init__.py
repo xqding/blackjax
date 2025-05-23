@@ -22,6 +22,7 @@ from .mcmc import mclmc as _mclmc
 from .mcmc import nuts as _nuts
 from .mcmc import periodic_orbital, random_walk
 from .mcmc import rmhmc as _rmhmc
+from .mcmc import langevin as _langevin
 from .mcmc.random_walk import additive_step_random_walk as _additive_step_random_walk
 from .mcmc.random_walk import (
     irmh_as_top_level_api,
@@ -131,6 +132,9 @@ sghmc = generate_top_level_api_from(_sghmc)
 sgnht = generate_top_level_api_from(_sgnht)
 csgld = generate_top_level_api_from(_csgld)
 svgd = generate_top_level_api_from(_svgd)
+
+# langevin
+langevin = generate_top_level_api_from(_langevin)
 
 # variational inference
 meanfield_vi = GenerateVariationalAPI(
